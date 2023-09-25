@@ -7,6 +7,12 @@ import os
 
 from dotenv import load_dotenv
 
+import psycopg2
+from psycopg2 import Error
+from psycopg2.extras import execute_batch
+
+import logging
+
 load_dotenv()
 
 postgres_secrets = {
@@ -17,16 +23,12 @@ postgres_secrets = {
     "database": os.getenv("POSTGRES_DB"),
 }
 
-import psycopg2
-from psycopg2 import Error
-from psycopg2.extras import execute_batch
-
-import logging
-
 def scrape_wikipedia(city_names):
     cities_data = []
 
-    for city_name in city_names:
+    def get_city_data(city_name):
+
+        #for city_name in city_names:
         url = f"https://ru.wikipedia.org/wiki/{city_name}"
         response = requests.get(url)
         soup = BeautifulSoup(response.text, "lxml")
@@ -43,38 +45,35 @@ def scrape_wikipedia(city_names):
 
         infobox = soup.find("table", class_="infobox")
 
-        if infobox is not None:
+        if infobox:
             rows = infobox.find_all("tr")
 
             for row in rows:
                 header = row.find("th")
 
-                if header is not None:
+                if header:
                     header_text = header.text.strip()
+                    header_mapping = {
+                        "Страна": "Страна",
+                        "Основан": "Основан",
+                        "Первое упоминание": "Основан",
+                        "Тип климата": "Климат",
+                        "Часовой пояс": "Часовой пояс",
+                        "Население": "Население",
+                        "Почтовые индексы": "Почтовый индекс",
+                        "Почтовый индекс": "Почтовый индекс"
+                    }
 
-                    if header_text == "Страна":
-                        city_data["Страна"] = row.find("td").text.strip()
+                    try:
+                        if header_text in header_mapping:
+                            key = header_mapping[header_text]
+                            city_data[key] = row.find("td").text.strip()
+                    except: pass
 
-                    elif header_text in ["Основан", "Первое упоминание"]:    # , "Founded", "Platted"]:
-                        city_data["Основан"] = row.find("td").text.strip()
+        #cities_data.append(city_data)
+        return city_data
 
-                    elif header_text == "Тип климата":
-                        city_data["Климат"] = row.find("td").text.strip()
-
-                    elif header_text == "Часовой пояс":
-                        city_data["Часовой пояс"] = row.find("td").text.strip()
-
-                    elif header_text == "Население":
-                        try:
-                            city_data["Население"] = row.find("td").text.strip()
-                        except:
-                            logging.info("pizdec")
-
-                    elif header_text in ["Почтовые индексы", "Почтовый индекс"]:
-                        city_data["Почтовый индекс"] = row.find("td").text.strip()
-
-        cities_data.append(city_data)
-
+    cities_data = list(map(get_city_data, city_names))
     return cities_data
 
 def clean_data(raw_data):
